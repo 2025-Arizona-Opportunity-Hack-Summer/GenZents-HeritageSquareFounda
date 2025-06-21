@@ -6,6 +6,32 @@ import { AIService } from "@/lib/services/ai-service"
 import { logger } from "@/lib/utils/logger"
 import type { Chat, Message, Attachment, ContextFile } from "@/lib/types/chat"
 
+// Helper function to generate chat title from message content
+const generateChatTitle = (content: string): string => {
+  // Remove any leading/trailing whitespace and normalize line breaks
+  let cleaned = content.trim().replace(/\s+/g, ' ')
+  
+  // Remove basic markdown formatting
+  cleaned = cleaned
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+    .replace(/\*(.*?)\*/g, '$1')     // Italic
+    .replace(/`(.*?)`/g, '$1')       // Inline code
+    .replace(/#{1,6}\s/g, '')        // Headers
+  
+  // Split into words and take first 4-6 words
+  const words = cleaned.split(/\s+/).filter(word => word.length > 0)
+  const titleWords = words.slice(0, Math.min(6, words.length))
+  
+  // Join words and limit to 50 characters
+  let title = titleWords.join(' ')
+  if (title.length > 50) {
+    title = title.substring(0, 47) + '...'
+  }
+  
+  // Ensure we have a fallback title
+  return title || "New Chat"
+}
+
 // Remove duplicate interfaces as they now come from centralized types
 
 interface ChatState {
@@ -21,6 +47,7 @@ interface ChatState {
   loadChats: () => Promise<void>
   createChat: (title?: string, template?: Partial<Chat>) => Promise<string>
   selectChat: (chatId: string) => void
+  clearCurrentChat: () => void
   deleteChat: (chatId: string) => Promise<void>
   updateChat: (chatId: string, updates: Partial<Chat>) => Promise<void>
   duplicateChat: (chatId: string) => Promise<string>
@@ -138,6 +165,10 @@ export const useChatStore = create<ChatState>()(
 
       selectChat: (chatId: string) => {
         set({ currentChatId: chatId })
+      },
+
+      clearCurrentChat: () => {
+        set({ currentChatId: null })
       },
 
       deleteChat: async (chatId: string) => {
@@ -286,6 +317,35 @@ export const useChatStore = create<ChatState>()(
             attachments: [],
           }))
 
+          // Check if this is the first message in the chat and update title
+          const currentState = get()
+          const targetChat = currentState.chats.find(chat => chat.id === targetChatId)
+          if (targetChat && targetChat.messages.length === 1 && targetChat.title === "New Chat") {
+            const newTitle = generateChatTitle(content)
+            logger.info("Updating chat title based on first message", { 
+              component: "chat-store", 
+              chatId: targetChatId, 
+              newTitle 
+            })
+            
+            // Update title in local state
+            set((state) => ({
+              chats: state.chats.map((chat) =>
+                chat.id === targetChatId
+                  ? { ...chat, title: newTitle }
+                  : chat
+              ),
+            }))
+            
+            // Update title in database (fire and forget)
+            get().updateChat(targetChatId, { title: newTitle }).catch(error => 
+              logger.error("Failed to update chat title in database", error, { 
+                component: "chat-store", 
+                chatId: targetChatId 
+              })
+            )
+          }
+
           // Send message to backend using AIService
           const aiMessage = await AIService.sendMessage(targetChatId, content)
 
@@ -352,8 +412,19 @@ export const useChatStore = create<ChatState>()(
           let targetChatId = chatId || get().currentChatId
 
           if (!targetChatId) {
+            logger.info("Creating new chat for message stream", { component: "chat-store" })
             targetChatId = await get().createChat()
+            
+            // Wait a moment for the chat to be fully created
+            await new Promise(resolve => setTimeout(resolve, 100))
           }
+
+          // Validate that we have a proper chat ID
+          if (!targetChatId) {
+            throw new Error("Failed to create or get chat ID")
+          }
+
+          logger.info("Starting message stream", { component: "chat-store", chatId: targetChatId, content: content.substring(0, 50) + "..." })
 
           set({ isStreaming: true })
 
@@ -407,6 +478,35 @@ export const useChatStore = create<ChatState>()(
             attachments: [],
           }))
 
+          // Check if this is the first message in the chat and update title
+          const currentState = get()
+          const targetChat = currentState.chats.find(chat => chat.id === targetChatId)
+          if (targetChat && targetChat.messages.length === 1 && targetChat.title === "New Chat") {
+            const newTitle = generateChatTitle(content)
+            logger.info("Updating chat title based on first message", { 
+              component: "chat-store", 
+              chatId: targetChatId, 
+              newTitle 
+            })
+            
+            // Update title in local state
+            set((state) => ({
+              chats: state.chats.map((chat) =>
+                chat.id === targetChatId
+                  ? { ...chat, title: newTitle }
+                  : chat
+              ),
+            }))
+            
+            // Update title in database (fire and forget)
+            get().updateChat(targetChatId, { title: newTitle }).catch(error => 
+              logger.error("Failed to update chat title in database", error, { 
+                component: "chat-store", 
+                chatId: targetChatId 
+              })
+            )
+          }
+
           // Create streaming AI message placeholder
           const aiMessageId = nanoid()
           const aiMessage: Message = {
@@ -459,9 +559,13 @@ export const useChatStore = create<ChatState>()(
 
           // Start streaming response
           try {
+            logger.info("Calling AIService.sendMessageStream", { component: "chat-store", chatId: targetChatId })
             const stream = await AIService.sendMessageStream(targetChatId, content)
+            logger.info("Got stream response, starting to parse", { component: "chat-store", chatId: targetChatId })
 
             for await (const response of AIService.parseStreamingResponse(stream)) {
+              logger.debug("Received streaming response", { component: "chat-store", responseType: response.type })
+              
               if (response.type === "chunk" && response.content) {
                 // Update the AI message content with streaming chunks
                 set((state) => ({
@@ -482,6 +586,7 @@ export const useChatStore = create<ChatState>()(
                   ),
                 }))
               } else if (response.type === "complete" && response.message) {
+                logger.info("Streaming complete", { component: "chat-store", messageId: response.message.id })
                 // Update with final message data from server
                 set((state) => ({
                   chats: state.chats.map((chat) =>
@@ -511,7 +616,7 @@ export const useChatStore = create<ChatState>()(
                 }))
                 break
               } else if (response.type === "error") {
-                logger.error("Streaming error", undefined, { component: "chat-store", error: response.error })
+                logger.error("Streaming error received", undefined, { component: "chat-store", error: response.error })
                 throw new Error(response.error || "Failed to generate response")
               }
             }
@@ -531,57 +636,65 @@ export const useChatStore = create<ChatState>()(
             }))
 
             // Fall back to regular message sending
-            const aiMessage = await AIService.sendMessage(targetChatId, content)
+            try {
+              logger.info("Attempting fallback to regular message sending", { component: "chat-store", chatId: targetChatId })
+              const aiMessage = await AIService.sendMessage(targetChatId, content)
+              logger.info("Fallback message sent successfully", { component: "chat-store", messageId: aiMessage.id })
 
-            // Add the regular AI response
-            set((state) => ({
-              chats: state.chats.map((chat) =>
-                chat.id === targetChatId
-                  ? {
-                      ...chat,
-                      messages: [
-                        ...chat.messages,
-                        {
-                          id: aiMessage.id,
-                          chat_id: targetChatId,
-                          role: "assistant",
-                          content: aiMessage.content,
-                          created_at: aiMessage.created_at,
-                          edited: false,
-                          deleted: false,
-                          metadata: {
-                            model: "gemini-1.5-flash",
-                            tokens: undefined,
-                            cost: undefined,
-                            processingTime: undefined,
-                            confidence: undefined,
-                            sources: [],
-                            citations: [],
-                            language: undefined,
-                            sentiment: undefined,
-                            topics: [],
-                            entities: [],
+              // Add the regular AI response
+              set((state) => ({
+                chats: state.chats.map((chat) =>
+                  chat.id === targetChatId
+                    ? {
+                        ...chat,
+                        messages: [
+                          ...chat.messages,
+                          {
+                            id: aiMessage.id,
+                            chat_id: targetChatId,
+                            role: "assistant",
+                            content: aiMessage.content,
+                            created_at: aiMessage.created_at,
+                            edited: false,
+                            deleted: false,
+                            metadata: {
+                              model: "gemini-1.5-flash",
+                              tokens: undefined,
+                              cost: undefined,
+                              processingTime: undefined,
+                              confidence: undefined,
+                              sources: [],
+                              citations: [],
+                              language: undefined,
+                              sentiment: undefined,
+                              topics: [],
+                              entities: [],
+                            },
+                            attachments: [],
+                            reactions: [],
+                            mentions: [],
+                            status: {
+                              sent: true,
+                              delivered: true,
+                              read: false,
+                              retries: 0,
+                              status: "sent",
+                            },
+                            encryption: {
+                              encrypted: false,
+                            },
                           },
-                          attachments: [],
-                          reactions: [],
-                          mentions: [],
-                          status: {
-                            sent: true,
-                            delivered: true,
-                            read: false,
-                            retries: 0,
-                            status: "sent",
-                          },
-                          encryption: {
-                            encrypted: false,
-                          },
-                        },
-                      ],
-                    }
-                  : chat
-              ),
-              isStreaming: false,
-            }))
+                        ],
+                      }
+                    : chat
+                ),
+                isStreaming: false,
+              }))
+            } catch (fallbackError) {
+              logger.error("Both streaming and regular message failed", fallbackError as Error, { component: "chat-store", chatId: targetChatId })
+              set({ isStreaming: false })
+              throw fallbackError
+            }
           }
 
           return targetChatId

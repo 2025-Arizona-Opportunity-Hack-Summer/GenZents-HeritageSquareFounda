@@ -1,4 +1,4 @@
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from models.user import User
@@ -23,9 +23,32 @@ else:
 
 security = HTTPBearer()
 
+# Function to get authenticated supabase client for user requests  
+def get_user_supabase_client(token: str) -> Client:
+    """Create a Supabase client with user authentication token for RLS"""
+    try:
+        # Create options with proper headers
+        options = ClientOptions(
+            headers={
+                "Authorization": f"Bearer {token}",
+                "apikey": settings.SUPABASE_ANON_KEY
+            }
+        )
+        
+        # Create a new client with user authentication
+        user_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_ANON_KEY,
+            options=options
+        )
+        
+        return user_client
+    except Exception as e:
+        logger.error(f"Failed to create authenticated Supabase client: {e}")
+        # Return a basic client if user client creation fails
+        return supabase
+
 # Dependency to get current user
-
-
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     if not supabase:
         raise HTTPException(

@@ -2,24 +2,31 @@ import { create } from "zustand"
 import { supabase } from "@/lib/supabase/client"
 import { logger } from "@/lib/utils/logger"
 import type { User, Session } from "@supabase/supabase-js"
+import type { Database, UserPermission, UserStatus } from "@/lib/types/database"
+
+type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 
 interface AuthState {
   user: User | null
+  profile: Profile | null
   session: Session | null
   loading: boolean
   initialized: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (email: string, password: string, metadata?: any) => Promise<{ error?: string }>
   signOut: () => Promise<void>
   initialize: () => Promise<void>
-  updateProfile: (updates: { full_name?: string }) => Promise<{ error?: string }>
+  updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>
   resetPassword: (email: string) => Promise<{ error?: string }>
   updatePassword: (password: string) => Promise<{ error?: string }>
-  resendConfirmation: (email: string) => Promise<{ error?: string }>
+  setPassword: (password: string, token?: string) => Promise<{ error?: string }>
+  isAdmin: () => boolean
+  hasPermission: (permission: UserPermission) => boolean
+  refreshProfile: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  profile: null,
   session: null,
   loading: false,
   initialized: false,
@@ -37,6 +44,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         logger.error("Error getting session", error as Error, { component: "auth-store" })
       }
 
+      if (session?.user) {
+        await get().refreshProfile()
+      }
+
       set({
         session,
         user: session?.user || null,
@@ -45,10 +56,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       })
 
       supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user) {
+          await get().refreshProfile()
+        } else if (event === "SIGNED_OUT") {
+          set({ profile: null })
+        }
+
         set({
           session,
           user: session?.user || null,
-          loading: false,
         })
       })
     } catch (error) {
@@ -57,10 +73,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  refreshProfile: async () => {
+    const { user } = get()
+    if (!user) return
+
+    try {
+      const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+
+      if (error) {
+        logger.error("Error fetching profile", error as Error, { component: "auth-store" })
+        return
+      }
+
+      set({ profile })
+    } catch (error) {
+      logger.error("Error refreshing profile", error as Error, { component: "auth-store" })
+    }
+  },
+
   signIn: async (email: string, password: string) => {
     try {
       set({ loading: true })
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -71,45 +104,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { error: error.message }
       }
 
-      set({
-        user: data.user,
-        session: data.session,
-        loading: false,
-      })
+      await supabase.from("profiles").update({ last_sign_in: new Date().toISOString() }).eq("id", data.user.id)
 
-      return {}
-    } catch (error) {
+      await get().refreshProfile()
       set({ loading: false })
-      return { error: "An unexpected error occurred" }
-    }
-  },
-
-  signUp: async (email: string, password: string, metadata = {}) => {
-    try {
-      set({ loading: true })
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: metadata,
-          emailRedirectTo: `${window.location.origin}/confirm-account/{{.TokenHash}}?type=signup`,
-        },
-      })
-
-      if (error) {
-        set({ loading: false })
-        return { error: error.message }
-      }
-
-      set({
-        user: data.user,
-        session: data.session,
-        loading: false,
-      })
-
       return {}
     } catch (error) {
+      logger.error("Error signing in", error as Error, { component: "auth-store" })
       set({ loading: false })
       return { error: "An unexpected error occurred" }
     }
@@ -117,117 +118,106 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     try {
-      set({ loading: true })
-
       const { error } = await supabase.auth.signOut()
-
       if (error) {
         logger.error("Error signing out", error as Error, { component: "auth-store" })
       }
-
-      set({
-        user: null,
-        session: null,
-        loading: false,
-      })
+      set({ user: null, profile: null, session: null })
     } catch (error) {
       logger.error("Error signing out", error as Error, { component: "auth-store" })
-      set({ loading: false })
     }
   },
 
-  updateProfile: async (updates: { full_name?: string }) => {
+  updateProfile: async (updates: Partial<Profile>) => {
     try {
-      set({ loading: true })
+      const { user } = get()
+      if (!user) return { error: "No authenticated user" }
 
-      const { data, error } = await supabase.auth.updateUser({
-        data: updates,
-      })
+      const { error } = await supabase
+        .from("profiles")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", user.id)
 
       if (error) {
-        set({ loading: false })
+        logger.error("Error updating profile", error as Error, { component: "auth-store" })
         return { error: error.message }
       }
 
-      set({
-        user: data.user,
-        loading: false,
-      })
-
+      await get().refreshProfile()
       return {}
     } catch (error) {
-      set({ loading: false })
+      logger.error("Error updating profile", error as Error, { component: "auth-store" })
       return { error: "An unexpected error occurred" }
     }
   },
 
   resetPassword: async (email: string) => {
     try {
-      set({ loading: true })
-
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/confirm-account/{{.TokenHash}}?type=recovery`,
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       })
 
       if (error) {
-        set({ loading: false })
         return { error: error.message }
       }
 
-      set({ loading: false })
-
       return {}
     } catch (error) {
-      set({ loading: false })
+      logger.error("Error resetting password", error as Error, { component: "auth-store" })
       return { error: "An unexpected error occurred" }
     }
   },
 
   updatePassword: async (password: string) => {
     try {
-      set({ loading: true })
-
-      const { error } = await supabase.auth.updateUser({
-        password,
-      })
+      const { error } = await supabase.auth.updateUser({ password })
 
       if (error) {
-        set({ loading: false })
         return { error: error.message }
       }
 
-      set({ loading: false })
-
       return {}
     } catch (error) {
-      set({ loading: false })
+      logger.error("Error updating password", error as Error, { component: "auth-store" })
       return { error: "An unexpected error occurred" }
     }
   },
 
-  resendConfirmation: async (email: string) => {
+  setPassword: async (password: string, token?: string) => {
     try {
-      set({ loading: true })
+      if (token) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: token,
+          type: "recovery",
+        })
 
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/confirm-account/{{.TokenHash}}?type=signup`,
-        },
-      })
+        if (error) {
+          return { error: error.message }
+        }
+      }
+
+      const { error } = await supabase.auth.updateUser({ password })
 
       if (error) {
-        set({ loading: false })
         return { error: error.message }
       }
 
-      set({ loading: false })
-
       return {}
     } catch (error) {
-      set({ loading: false })
+      logger.error("Error setting password", error as Error, { component: "auth-store" })
       return { error: "An unexpected error occurred" }
     }
+  },
+
+  isAdmin: () => {
+    const { profile } = get()
+    return profile?.is_admin === true
+  },
+
+  hasPermission: (permission: UserPermission) => {
+    const { profile } = get()
+    if (!profile) return false
+    if (profile.is_admin) return true
+    return profile.permissions?.includes(permission) === true
   },
 }))

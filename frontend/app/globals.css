@@ -159,3 +159,37 @@
 .font-mono {
   font-family: var(--font-fira-code);
 }
+
+/* Markdown styles for AI messages */
+.prose-chat {
+  @apply prose prose-sm dark:prose-invert max-w-none;
+}
+
+.prose-chat pre {
+  @apply bg-muted/80 border rounded-md p-3 overflow-x-auto;
+}
+
+.prose-chat code {
+  @apply bg-muted/60 px-1.5 py-0.5 rounded text-sm;
+}
+
+.prose-chat pre code {
+  @apply bg-transparent p-0;
+}
+
+.prose-chat blockquote {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic;
+}
+
+.prose-chat table {
+  @apply border border-border rounded-md overflow-hidden;
+}
+
+.prose-chat th,
+.prose-chat td {
+  @apply border border-border px-3 py-2;
+}
+
+.prose-chat th {
+  @apply bg-muted font-medium;
+}

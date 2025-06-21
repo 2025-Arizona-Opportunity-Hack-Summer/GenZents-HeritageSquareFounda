@@ -1,3 +1,13 @@
+export type UserPermission =
+  | "ai_chat"
+  | "file_organization"
+  | "version_history"
+  | "context_management"
+  | "tools_access"
+  | "admin_access"
+
+export type UserStatus = "active" | "paused" | "pending_invitation"
+
 // Database types that match the Supabase schema
 export interface Database {
   public: {
@@ -13,6 +23,12 @@ export interface Database {
           theme: "light" | "dark" | "system"
           language: string
           timezone: string
+          is_admin: boolean
+          status: UserStatus
+          permissions: UserPermission[]
+          last_sign_in: string | null
+          invitation_token: string | null
+          invitation_expires_at: string | null
           subscription_plan: "free" | "pro" | "enterprise"
           subscription_features: string[]
           billing_amount: number
@@ -36,6 +52,12 @@ export interface Database {
           theme?: "light" | "dark" | "system"
           language?: string
           timezone?: string
+          is_admin?: boolean
+          status?: UserStatus
+          permissions?: UserPermission[]
+          last_sign_in?: string | null
+          invitation_token?: string | null
+          invitation_expires_at?: string | null
           subscription_plan?: "free" | "pro" | "enterprise"
           subscription_features?: string[]
           billing_amount?: number
@@ -59,6 +81,12 @@ export interface Database {
           theme?: "light" | "dark" | "system"
           language?: string
           timezone?: string
+          is_admin?: boolean
+          status?: UserStatus
+          permissions?: UserPermission[]
+          last_sign_in?: string | null
+          invitation_token?: string | null
+          invitation_expires_at?: string | null
           subscription_plan?: "free" | "pro" | "enterprise"
           subscription_features?: string[]
           billing_amount?: number
@@ -682,40 +710,6 @@ export interface Database {
           event?: string
           properties?: any
           timestamp?: string
-        }
-      }
-      chat_invitations: {
-        Row: {
-          id: string
-          chat_id: string
-          email: string
-          role: "owner" | "editor" | "viewer" | "commenter"
-          permissions: any
-          invited_by: string
-          token: string
-          status: "pending" | "accepted" | "rejected" | "expired"
-          expires_at: string
-          created_at: string
-        }
-        Insert: {
-          chat_id: string
-          email: string
-          role: "owner" | "editor" | "viewer" | "commenter"
-          permissions?: any
-          invited_by: string
-          token?: string
-          status?: "pending" | "accepted" | "rejected" | "expired"
-          expires_at: string
-        }
-        Update: {
-          chat_id?: string
-          email?: string
-          role?: "owner" | "editor" | "viewer" | "commenter"
-          permissions?: any
-          invited_by?: string
-          token?: string
-          status?: "pending" | "accepted" | "rejected" | "expired"
-          expires_at?: string
         }
       }
     }

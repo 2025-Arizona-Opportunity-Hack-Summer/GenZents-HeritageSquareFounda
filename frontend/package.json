@@ -32,12 +32,15 @@
     "@supabase/auth-helpers-nextjs": "^0.8.7",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "@tailwindcss/typography": "^0.5.16",
+    "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "latest",
     "immer": "latest",
     "isomorphic-dompurify": "latest",
     "lucide-react": "^0.454.0",
+    "marked": "^15.0.12",
     "nanoid": "latest",
     "next": "14.2.16",
     "next-themes": "latest",
@@ -51,6 +54,7 @@
     "zustand": "latest"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",

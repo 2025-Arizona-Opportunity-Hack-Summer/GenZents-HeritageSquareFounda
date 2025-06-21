@@ -5,9 +5,9 @@ from datetime import datetime
 
 class ChatCreate(BaseModel):
     title: str = "New Chat"
-    model: Optional[str] = None
+    model: Optional[str] = "gemini-1.5-flash"
     system_prompt: Optional[str] = None
-    tags: Optional[List[str]] = []
+    tags: Optional[List[str]] = None
 
 
 class ChatUpdate(BaseModel):

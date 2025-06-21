@@ -1,18 +1,29 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/lib/stores/auth-store"
-import type { AuthGuardProps } from "@/lib/types/ui"
+import { Loader2 } from "lucide-react"
+import type { UserPermission } from "@/lib/types/database"
 
-// Remove duplicate interface as it now comes from centralized types
+interface AuthGuardProps {
+  children: React.ReactNode
+  requireAuth?: boolean
+  requireAdmin?: boolean
+  requiredPermissions?: UserPermission[]
+  fallback?: React.ReactNode
+}
 
-export function AuthGuard({ children }: AuthGuardProps) {
+export function AuthGuard({
+  children,
+  requireAuth = true,
+  requireAdmin = false,
+  requiredPermissions = [],
+  fallback,
+}: AuthGuardProps): React.ReactElement | null {
   const router = useRouter()
-  const pathname = usePathname()
-  const { user, loading, initialized, initialize } = useAuthStore()
+  const { user, profile, loading, initialized, initialize, isAdmin, hasPermission } = useAuthStore()
 
   useEffect(() => {
     if (!initialized) {
@@ -21,33 +32,64 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [initialized, initialize])
 
   useEffect(() => {
-    if (initialized && !loading) {
-      const isAuthPage = pathname === "/auth" || pathname === "/reset-password"
+    if (!initialized || loading) return
 
-      if (!user && !isAuthPage) {
-        // Redirect to auth page if not authenticated
-        router.push("/auth")
-      } else if (user && isAuthPage) {
-        // Redirect to home if already authenticated
+    if (requireAuth && !user) {
+      router.push("/auth")
+      return
+    }
+
+    if (requireAdmin && !isAdmin()) {
+      router.push("/")
+      return
+    }
+
+    if (requiredPermissions.length > 0) {
+      const hasAllPermissions = requiredPermissions.every((permission) => hasPermission(permission))
+
+      if (!hasAllPermissions) {
         router.push("/")
+        return
       }
     }
-  }, [user, loading, initialized, pathname, router])
+  }, [
+    user,
+    profile,
+    initialized,
+    loading,
+    requireAuth,
+    requireAdmin,
+    requiredPermissions,
+    router,
+    isAdmin,
+    hasPermission,
+  ])
 
-  // Show nothing while checking authentication
-  if (loading || !initialized) {
+  if (!initialized || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     )
   }
 
-  // Auth pages are handled by their own components
-  if (pathname === "/auth" || pathname === "/reset-password") {
-    return <>{children}</>
+  // TODO: Using <></> instead of fallback||null . Fix later
+
+  if (requireAuth && !user) {
+    return <></>
   }
 
-  // Protected routes
-  return user ? <>{children}</> : null
+  if (requireAdmin && !isAdmin()) {
+    return <></>
+  }
+
+  if (requiredPermissions.length > 0) {
+    const hasAllPermissions = requiredPermissions.every((permission) => hasPermission(permission))
+
+    if (!hasAllPermissions) {
+      return <></>
+    }
+  }
+
+  return <>{children}</>
 }

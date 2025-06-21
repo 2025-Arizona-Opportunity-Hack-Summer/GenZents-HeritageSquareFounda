@@ -94,21 +94,36 @@ export function ChatInput() {
     setInput("")
 
     try {
+      logger.info("Attempting to send message", {
+        component: "chat-input",
+        hasCurrentChat: !!currentChat,
+        messageLength: messageContent.length,
+      })
+
       // Use streaming for better user experience
       const chatId = await sendMessageStream(messageContent, currentChat?.id)
 
+      logger.info("Message sent successfully", { component: "chat-input", chatId, wasNewChat })
+
       // If this was a new chat (no currentChat), navigate to the newly created chat
       if (wasNewChat && chatId) {
+        logger.info("Navigating to new chat", { component: "chat-input", chatId })
         selectChat(chatId)
         router.push(`/chat/${chatId}`)
       }
     } catch (error) {
-      logger.error("Error sending message", error as Error, { component: "chat-input" })
+      logger.error("Error sending message", error as Error, {
+        component: "chat-input",
+        messageContent: messageContent.substring(0, 50),
+      })
       toast({
         title: "Error sending message",
-        description: "Failed to send message. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
         variant: "destructive",
       })
+
+      // Restore the input on error
+      setInput(messageContent)
     }
   }, [input, attachments, isStreaming, sendMessageStream, currentChat, selectChat, router, toast])
 

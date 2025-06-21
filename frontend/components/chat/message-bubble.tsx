@@ -33,6 +33,7 @@ import { formatDistanceToNow, format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import type { MessageBubbleProps } from "@/lib/types/ui"
+import { renderMarkdown } from "@/lib/utils/markdown"
 
 // Remove duplicate interface as it now comes from centralized types
 
@@ -138,10 +139,10 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {!isSystem && settings.showAvatars && (
+      {!isSystem && !isUser && settings.showAvatars && (
         <Avatar className="h-8 w-8 flex-shrink-0">
-          <AvatarImage src={isUser ? "/placeholder.svg?height=32&width=32" : "/placeholder.svg?height=32&width=32"} />
-          <AvatarFallback>{isUser ? "U" : "AI"}</AvatarFallback>
+          <AvatarImage src="/placeholder.svg?height=32&width=32" />
+          <AvatarFallback>AI</AvatarFallback>
         </Avatar>
       )}
 
@@ -154,7 +155,14 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
             isSystem && "bg-[hsl(var(--chat-system-bg))] text-[hsl(var(--chat-system-fg))] border text-center"
           )}
         >
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          {!isUser && !isSystem ? (
+            <div 
+              className="prose-chat"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+            />
+          ) : (
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          )}
 
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 space-y-2">

@@ -15,8 +15,10 @@ export const metadata: Metadata = {
 
 export default function VersionHistoryPage() {
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <VersionHistory />
+    <div className="h-full overflow-auto">
+      <div className="container mx-auto px-4 py-8">
+        <VersionHistory />
+      </div>
     </div>
   )
 }

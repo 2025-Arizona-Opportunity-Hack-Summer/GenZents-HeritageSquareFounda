@@ -2,7 +2,6 @@ from api import chats, messages
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from dotenv import load_dotenv
 from config import settings
 from utils.logger import logger
 
@@ -11,9 +10,6 @@ from utils.logger import logger
 
 # # Add the parent directory to the path so we can import our modules
 # sys.path.append(str(Path(__file__).parent))
-
-# Load environment variables
-load_dotenv()
 
 # Import routers
 
@@ -27,12 +23,26 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000",
-                   "https://your-frontend-domain.com"],
+    allow_origins=[
+        settings.FRONTEND_URL, 
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://your-frontend-domain.com",
+        "*"  # Allow all origins for development
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
+
+# Add preflight handler for CORS
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {"detail": "OK"}
 
 # Health check endpoint
 

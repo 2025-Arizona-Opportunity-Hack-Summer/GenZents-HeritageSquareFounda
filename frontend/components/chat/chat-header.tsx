@@ -6,11 +6,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useChatStore } from "@/lib/stores/chat-store"
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
+import { useRouter } from "next/navigation"
 
 export function ChatHeader() {
   const { getCurrentChat, updateChat, deleteChat } = useChatStore()
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState("")
+  const router = useRouter()
 
   const currentChat = getCurrentChat()
 
@@ -34,6 +36,7 @@ export function ChatHeader() {
 
   const handleDelete = async () => {
     await deleteChat(currentChat.id)
+    router.push("/")
   }
 
   return (

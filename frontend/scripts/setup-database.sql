@@ -1,5 +1,17 @@
+-- Complete Database Setup Script for Archyx AI
+-- This script sets up the complete application database including user management, 
+-- chat functionality, file handling, and authentication system
+-- Run this script with superuser privileges in your Supabase SQL editor
+
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- =====================================================
+-- CORE USER TABLES
+-- =====================================================
+
 -- Create profiles table (extended user information)
-CREATE TABLE IF NOT EXISTS profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
@@ -19,7 +31,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   billing_currency TEXT DEFAULT 'USD',
   billing_interval TEXT CHECK (billing_interval IN ('monthly', 'yearly')),
   next_billing TIMESTAMPTZ,
-    -- Usage limits
+  
+  -- Usage limits
   messages_per_day INTEGER DEFAULT 50,
   tokens_per_month INTEGER DEFAULT 100000,
   file_uploads INTEGER DEFAULT 10,
@@ -29,7 +42,15 @@ CREATE TABLE IF NOT EXISTS profiles (
   messages_count INTEGER DEFAULT 0,
   tokens_used INTEGER DEFAULT 0,
   files_uploaded INTEGER DEFAULT 0,
-  last_active TIMESTAMPTZ DEFAULT NOW()
+  last_active TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- AUTH MANAGEMENT FIELDS
+  is_admin BOOLEAN DEFAULT FALSE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'pending_invitation')),
+  permissions TEXT[] DEFAULT '{}',
+  last_sign_in TIMESTAMP WITH TIME ZONE,
+  invitation_token TEXT,
+  invitation_expires_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Create user_settings table for detailed preferences
@@ -87,6 +108,10 @@ CREATE TABLE IF NOT EXISTS user_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- =====================================================
+-- AI MODELS TABLE
+-- =====================================================
+
 -- Create AI models table
 CREATE TABLE IF NOT EXISTS ai_models (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -102,6 +127,10 @@ CREATE TABLE IF NOT EXISTS ai_models (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(name, provider)
 );
+
+-- =====================================================
+-- CHAT SYSTEM TABLES
+-- =====================================================
 
 -- Create chats table (enhanced)
 CREATE TABLE IF NOT EXISTS chats (
@@ -128,7 +157,8 @@ CREATE TABLE IF NOT EXISTS chats (
   auto_save BOOLEAN DEFAULT true,
   encryption BOOLEAN DEFAULT false,
   retention_days INTEGER DEFAULT 30,
-    -- Metadata
+  
+  -- Metadata
   total_messages INTEGER DEFAULT 0,
   total_tokens INTEGER DEFAULT 0,
   average_response_time DECIMAL(10,3) DEFAULT 0,
@@ -181,8 +211,14 @@ CREATE TABLE IF NOT EXISTS messages (
   language TEXT,
   sentiment TEXT CHECK (sentiment IN ('positive', 'negative', 'neutral')),
   topics TEXT[] DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW(),  updated_at TIMESTAMPTZ DEFAULT NOW()
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- =====================================================
+-- FILE AND ATTACHMENT TABLES
+-- =====================================================
 
 -- Create attachments table
 CREATE TABLE IF NOT EXISTS attachments (
@@ -215,6 +251,22 @@ CREATE TABLE IF NOT EXISTS attachments (
   uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Create context_files table
+CREATE TABLE IF NOT EXISTS context_files (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  size BIGINT NOT NULL,
+  path TEXT NOT NULL,
+  content TEXT,
+  added_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =====================================================
+-- INTERACTION TABLES
+-- =====================================================
+
 -- Create reactions table
 CREATE TABLE IF NOT EXISTS reactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -237,6 +289,22 @@ CREATE TABLE IF NOT EXISTS mentions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Create comments table
+CREATE TABLE IF NOT EXISTS comments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  content TEXT NOT NULL,
+  resolved BOOLEAN DEFAULT false,
+  parent_id UUID REFERENCES comments(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =====================================================
+-- VERSION CONTROL AND SHARING
+-- =====================================================
+
 -- Create chat_versions table
 CREATE TABLE IF NOT EXISTS chat_versions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -253,30 +321,6 @@ CREATE TABLE IF NOT EXISTS chat_versions (
   UNIQUE(chat_id, version)
 );
 
--- Create comments table
-CREATE TABLE IF NOT EXISTS comments (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  content TEXT NOT NULL,
-  resolved BOOLEAN DEFAULT false,
-  parent_id UUID REFERENCES comments(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create context_files table
-CREATE TABLE IF NOT EXISTS context_files (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  size BIGINT NOT NULL,
-  path TEXT NOT NULL,
-  content TEXT,
-  added_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Create share_settings table
 CREATE TABLE IF NOT EXISTS share_settings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -291,16 +335,24 @@ CREATE TABLE IF NOT EXISTS share_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- =====================================================
+-- ANALYTICS TABLE
+-- =====================================================
+
 -- Create analytics table
 CREATE TABLE IF NOT EXISTS analytics (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   session_id TEXT,
   event TEXT NOT NULL,
-  properties JSONB DEFAULT '{}',  timestamp TIMESTAMPTZ DEFAULT NOW()
+  properties JSONB DEFAULT '{}',
+  timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable RLS on all tables
+-- =====================================================
+-- ENABLE ROW LEVEL SECURITY
+-- =====================================================
+
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_models ENABLE ROW LEVEL SECURITY;
@@ -315,7 +367,25 @@ ALTER TABLE context_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE share_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics ENABLE ROW LEVEL SECURITY;
 
--- Create comprehensive RLS policies
+-- =====================================================
+-- HELPER FUNCTIONS
+-- =====================================================
+
+-- Function to check if current user is admin (security definer to bypass RLS)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE SQL
+SECURITY DEFINER
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() AND is_admin = true
+  );
+$$;
+
+-- =====================================================
+-- ROW LEVEL SECURITY POLICIES
+-- =====================================================
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles
@@ -326,6 +396,22 @@ CREATE POLICY "Users can update own profile" ON profiles
 
 CREATE POLICY "Users can insert own profile" ON profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Admin policies for profiles (using security definer function)
+CREATE POLICY "Admins can view all profiles" ON profiles
+  FOR SELECT 
+  TO authenticated
+  USING (is_admin());
+
+CREATE POLICY "Admins can update all profiles" ON profiles
+  FOR UPDATE 
+  TO authenticated
+  USING (is_admin());
+
+CREATE POLICY "Admins can delete all profiles" ON profiles
+  FOR DELETE 
+  TO authenticated
+  USING (is_admin());
 
 -- User settings policies
 CREATE POLICY "Users can view own settings" ON user_settings
@@ -341,18 +427,41 @@ CREATE POLICY "Users can insert own settings" ON user_settings
 CREATE POLICY "Authenticated users can view AI models" ON ai_models
   FOR SELECT USING (auth.role() = 'authenticated');
 
--- Chats policies
+-- Drop existing chat policies to avoid conflicts (in case of re-running script)
+DROP POLICY IF EXISTS "Users can view own chats" ON chats;
+DROP POLICY IF EXISTS "Users can create own chats" ON chats;
+DROP POLICY IF EXISTS "Users can update own chats" ON chats;
+DROP POLICY IF EXISTS "Users can delete own chats" ON chats;
+DROP POLICY IF EXISTS "Admins can manage all chats" ON chats;
+
+-- Chats policies (recreated with proper permissions)
 CREATE POLICY "Users can view own chats" ON chats
-  FOR SELECT USING (auth.uid() = user_id);
+  FOR SELECT 
+  TO authenticated
+  USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can create own chats" ON chats
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  FOR INSERT 
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own chats" ON chats
-  FOR UPDATE USING (auth.uid() = user_id);
+  FOR UPDATE 
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own chats" ON chats
-  FOR DELETE USING (auth.uid() = user_id);
+  FOR DELETE 
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Admin policies for chats
+CREATE POLICY "Admins can manage all chats" ON chats
+  FOR ALL 
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
 
 -- Messages policies
 CREATE POLICY "Users can view messages in accessible chats" ON messages
@@ -380,7 +489,8 @@ CREATE POLICY "Users can update own messages" ON messages
       SELECT 1 FROM chats 
       WHERE chats.id = messages.chat_id 
       AND chats.user_id = auth.uid()
-    )  );
+    )
+  );
 
 -- Attachments policies
 CREATE POLICY "Users can view attachments in accessible chats/messages" ON attachments
@@ -419,7 +529,7 @@ CREATE POLICY "Users can view own analytics" ON analytics
 CREATE POLICY "System can insert analytics" ON analytics
   FOR INSERT WITH CHECK (true);
 
--- Additional policies for other tables following similar patterns...
+-- Additional policies for other tables following similar patterns
 CREATE POLICY "Users can view mentions in accessible messages" ON mentions
   FOR SELECT USING (
     EXISTS (
@@ -467,17 +577,36 @@ CREATE POLICY "Users can view share settings of own chats" ON share_settings
     )
   );
 
--- Create function to handle user creation
-CREATE OR REPLACE FUNCTION handle_new_user()
+-- =====================================================
+-- FUNCTIONS AND TRIGGERS
+-- =====================================================
+
+-- Function to automatically create profile on user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Insert into profiles
-  INSERT INTO profiles (id, email, full_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+  -- Insert into profiles with auth management fields
+  INSERT INTO public.profiles (
+    id, 
+    email, 
+    full_name, 
+    is_admin, 
+    status, 
+    permissions
+  ) VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    COALESCE((NEW.raw_user_meta_data->>'is_admin')::boolean, false),
+    COALESCE(NEW.raw_user_meta_data->>'status', 'active'),
+    COALESCE(
+      ARRAY(SELECT jsonb_array_elements_text(NEW.raw_user_meta_data->'permissions')),
+      '{}'::text[]
+    )
+  );
   
   -- Insert default user settings
-  INSERT INTO user_settings (user_id)
-  VALUES (NEW.id);
+  INSERT INTO user_settings (user_id) VALUES (NEW.id);
   
   RETURN NEW;
 END;
@@ -487,9 +616,57 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Create function to update updated_at timestamp
+-- Function to promote a user to admin status
+CREATE OR REPLACE FUNCTION promote_user_to_admin(user_email TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    user_id UUID;
+BEGIN
+    -- Find the user by email
+    SELECT id INTO user_id FROM profiles WHERE email = user_email;
+    
+    IF user_id IS NULL THEN
+        RAISE NOTICE 'User with email % not found', user_email;
+        RETURN FALSE;
+    END IF;
+    
+    -- Update user to admin status
+    UPDATE profiles SET
+        is_admin = true,
+        status = 'active',
+        permissions = '{"admin_access", "ai_chat", "file_organization", "version_history", "context_management", "tools_access"}',
+        updated_at = NOW()
+    WHERE id = user_id;
+    
+    RAISE NOTICE 'User % promoted to admin', user_email;
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to validate user permissions
+CREATE OR REPLACE FUNCTION validate_user_permissions(user_id UUID, required_permission TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    user_permissions TEXT[];
+    is_admin BOOLEAN;
+BEGIN
+    SELECT permissions, is_admin INTO user_permissions, is_admin
+    FROM profiles 
+    WHERE id = user_id;
+    
+    -- Admins have all permissions
+    IF is_admin THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if user has the required permission
+    RETURN required_permission = ANY(user_permissions);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -498,7 +675,52 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers for updated_at
+-- Function to update chat metadata when messages are added
+CREATE OR REPLACE FUNCTION update_chat_metadata()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE chats SET 
+      total_messages = total_messages + 1,
+      total_tokens = total_tokens + COALESCE(NEW.tokens, 0),
+      last_activity = NOW(),
+      updated_at = NOW()
+    WHERE id = NEW.chat_id;
+    RETURN NEW;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE chats SET 
+      total_messages = GREATEST(total_messages - 1, 0),
+      total_tokens = GREATEST(total_tokens - COALESCE(OLD.tokens, 0), 0),
+      updated_at = NOW()
+    WHERE id = OLD.chat_id;
+    RETURN OLD;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to update user usage stats
+CREATE OR REPLACE FUNCTION update_user_usage_stats()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- Update message count and tokens used
+    UPDATE profiles SET 
+      messages_count = messages_count + 1,
+      tokens_used = tokens_used + COALESCE(NEW.tokens, 0),
+      last_active = NOW()
+    WHERE id = NEW.user_id;
+    RETURN NEW;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- CREATE TRIGGERS
+-- =====================================================
+
+-- Triggers for updated_at timestamps
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -527,31 +749,7 @@ CREATE TRIGGER update_share_settings_updated_at
   BEFORE UPDATE ON share_settings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Function to update chat metadata when messages are added
-CREATE OR REPLACE FUNCTION update_chat_metadata()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    UPDATE chats SET 
-      total_messages = total_messages + 1,
-      total_tokens = total_tokens + COALESCE(NEW.tokens, 0),
-      last_activity = NOW(),
-      updated_at = NOW()
-    WHERE id = NEW.chat_id;
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    UPDATE chats SET 
-      total_messages = GREATEST(total_messages - 1, 0),
-      total_tokens = GREATEST(total_tokens - COALESCE(OLD.tokens, 0), 0),
-      updated_at = NOW()
-    WHERE id = OLD.chat_id;
-    RETURN OLD;
-  END IF;
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create triggers for chat metadata updates
+-- Triggers for chat metadata updates
 CREATE TRIGGER update_chat_metadata_on_message_insert
   AFTER INSERT ON messages
   FOR EACH ROW EXECUTE FUNCTION update_chat_metadata();
@@ -560,29 +758,21 @@ CREATE TRIGGER update_chat_metadata_on_message_delete
   AFTER DELETE ON messages
   FOR EACH ROW EXECUTE FUNCTION update_chat_metadata();
 
--- Function to update user usage stats
-CREATE OR REPLACE FUNCTION update_user_usage_stats()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    -- Update message count and tokens used
-    UPDATE profiles SET 
-      messages_count = messages_count + 1,
-      tokens_used = tokens_used + COALESCE(NEW.tokens, 0),
-      last_active = NOW()
-    WHERE id = NEW.user_id;
-    RETURN NEW;
-  END IF;
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create trigger for user usage stats
+-- Trigger for user usage stats
 CREATE TRIGGER update_user_usage_stats_on_message
   AFTER INSERT ON messages
   FOR EACH ROW EXECUTE FUNCTION update_user_usage_stats();
 
--- Create indexes for better performance
+-- =====================================================
+-- CREATE INDEXES
+-- =====================================================
+
+-- Auth management indexes
+CREATE INDEX IF NOT EXISTS idx_profiles_status ON profiles(status);
+CREATE INDEX IF NOT EXISTS idx_profiles_is_admin ON profiles(is_admin);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+
+-- Chat system indexes
 CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
 CREATE INDEX IF NOT EXISTS idx_chats_status ON chats(status);
 CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at);
@@ -615,14 +805,47 @@ CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics(event);
 CREATE INDEX IF NOT EXISTS idx_analytics_timestamp ON analytics(timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
-CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 
--- Create full-text search indexes for content search
+-- Full-text search indexes
 CREATE INDEX IF NOT EXISTS idx_messages_content_fts ON messages USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_chats_title_fts ON chats USING GIN(to_tsvector('english', title));
 CREATE INDEX IF NOT EXISTS idx_chats_description_fts ON chats USING GIN(to_tsvector('english', description));
 
--- Insert some default AI models
+-- =====================================================
+-- CONSTRAINTS
+-- =====================================================
+
+-- Add check constraint for permissions
+ALTER TABLE profiles ADD CONSTRAINT check_permissions 
+  CHECK (permissions <@ ARRAY['ai_chat', 'file_organization', 'version_history', 'context_management', 'tools_access', 'admin_access']);
+
+-- =====================================================
+-- GRANT PERMISSIONS
+-- =====================================================
+
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT ALL ON TABLE profiles TO authenticated;
+GRANT ALL ON TABLE user_settings TO authenticated;
+GRANT ALL ON TABLE ai_models TO authenticated;
+GRANT ALL ON TABLE chats TO authenticated;
+GRANT ALL ON TABLE messages TO authenticated;
+GRANT ALL ON TABLE attachments TO authenticated;
+GRANT ALL ON TABLE reactions TO authenticated;
+GRANT ALL ON TABLE mentions TO authenticated;
+GRANT ALL ON TABLE chat_versions TO authenticated;
+GRANT ALL ON TABLE comments TO authenticated;
+GRANT ALL ON TABLE context_files TO authenticated;
+GRANT ALL ON TABLE share_settings TO authenticated;
+GRANT ALL ON TABLE analytics TO authenticated;
+
+GRANT EXECUTE ON FUNCTION validate_user_permissions TO authenticated;
+GRANT EXECUTE ON FUNCTION promote_user_to_admin TO authenticated;
+
+-- =====================================================
+-- INSERT DEFAULT DATA
+-- =====================================================
+
+-- Insert default AI models
 INSERT INTO ai_models (name, provider, type, description, capabilities, pricing, limits) VALUES
 ('GPT-4', 'openai', 'text', 'Advanced language model with superior reasoning capabilities', 
  '[{"name": "text_generation", "supported": true, "quality": "excellent"}, {"name": "code_generation", "supported": true, "quality": "excellent"}]',
@@ -640,3 +863,10 @@ INSERT INTO ai_models (name, provider, type, description, capabilities, pricing,
  '{"max_tokens": 4096, "max_requests_per_minute": 400, "max_requests_per_day": 8000, "context_window": 200000}')
 
 ON CONFLICT (name, provider) DO NOTHING;
+
+-- =====================================================
+-- ADMIN USER PROMOTION
+-- =====================================================
+
+-- Promote admin user if they exist
+-- SELECT promote_user_to_admin('admin@example.com');

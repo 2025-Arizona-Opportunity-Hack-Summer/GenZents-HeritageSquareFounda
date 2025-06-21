@@ -16,9 +16,43 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useChat } from "@/hooks/chat-provider"
 import { SettingsDialog } from "@/components/settings/settings-dialog"
+import { usePathname } from "next/navigation"
+import { useChatStore } from "@/lib/stores/chat-store"
 
 export function Header() {
   const { currentSession } = useChat()
+  const pathname = usePathname()
+  const { getCurrentChat } = useChatStore()
+
+  const getPageTitle = () => {
+    if (pathname === "/") {
+      return "Archyx AI"
+    }
+    
+    if (pathname.startsWith("/chat/")) {
+      const currentChat = getCurrentChat()
+      return currentChat?.title || "Chat"
+    }
+    
+    switch (pathname) {
+      case "/tools":
+        return "Tools"
+      case "/context":
+        return "Context"
+      case "/version":
+        return "Version"
+      case "/admin":
+        return "Admin"
+      case "/account":
+        return "Account"
+      default:
+        // For any other paths, capitalize the first segment
+        const segments = pathname.split("/").filter(Boolean)
+        return segments.length > 0 
+          ? segments[0].charAt(0).toUpperCase() + segments[0].slice(1)
+          : "Archyx AI"
+    }
+  }
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
@@ -28,9 +62,9 @@ export function Header() {
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem className="hidden md:block">
-            <BreadcrumbLink href="/">Archyx AI</BreadcrumbLink>
+            <BreadcrumbLink href="/">{getPageTitle()}</BreadcrumbLink>
           </BreadcrumbItem>
-          {currentSession && (
+          {currentSession && pathname.startsWith("/chat/") && (
             <>
               <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>

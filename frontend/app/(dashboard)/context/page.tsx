@@ -15,8 +15,10 @@ export const metadata: Metadata = {
 
 export default function ContextPage() {
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      <ContextManager />
+    <div className="h-full overflow-auto">
+      <div className="container mx-auto px-4 py-8">
+        <ContextManager />
+      </div>
     </div>
   )
 }
