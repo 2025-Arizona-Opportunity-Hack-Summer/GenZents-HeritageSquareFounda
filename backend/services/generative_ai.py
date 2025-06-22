@@ -47,6 +47,13 @@ def generate_text(prompt: str, history: List[Dict[str, str]] = [], system_prompt
     if not settings.GEMINI_API_KEY:
         return "AI service is not configured. Please check your API key."
 
+    # Input validation
+    if not prompt or len(prompt.strip()) == 0:
+        return "Please provide a valid message."
+    
+    if len(prompt) > 8000:
+        return "Message too long. Please limit your message to 8000 characters."
+
     try:
         # Configure model with system instruction if provided
         generation_config = {

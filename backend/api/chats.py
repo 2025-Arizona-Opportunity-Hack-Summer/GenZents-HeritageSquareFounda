@@ -31,10 +31,14 @@ async def get_chats(
     current_user: User = Depends(get_current_user),
     user_supabase = Depends(get_authenticated_supabase),
     archived: Optional[bool] = None,
-    bookmarked: Optional[bool] = None
+    bookmarked: Optional[bool] = None,
+    limit: Optional[int] = 50
 ):
     """Get all chats for the current user"""
     try:
+        # Validate limit parameter
+        limit = min(max(1, limit), 100)  # Clamp between 1-100
+        
         query = user_supabase.table("chats").select(
             "*").eq("user_id", current_user.id)
 
@@ -43,10 +47,11 @@ async def get_chats(
         if bookmarked is not None:
             query = query.eq("bookmarked", bookmarked)
 
-        response = query.order("updated_at", desc=True).execute()
+        response = query.order("updated_at", desc=True).limit(limit).execute()
         return response.data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching chats for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chats")
 
 
 @router.post("/", response_model=ChatResponse)
@@ -87,25 +92,24 @@ async def create_chat(
     except Exception as e:
         error_detail = str(e)
         logger.error(f"Error creating chat: {error_detail}")
-        
-        # Provide more specific error messages
+          # Provide more specific error messages
         if "row-level security policy" in error_detail.lower():
             raise HTTPException(
                 status_code=403, 
-                detail="Permission denied: Unable to create chat. Please contact administrator."
+                detail="Permission denied"
             )
         elif "authentication" in error_detail.lower():
             raise HTTPException(
                 status_code=401, 
-                detail="Authentication failed. Please log in again."
+                detail="Authentication required"
             )
         elif "duplicate key" in error_detail.lower():
             raise HTTPException(
                 status_code=409, 
-                detail="Chat ID conflict. Please try again."
+                detail="Conflict occurred"
             )
         else:
-            raise HTTPException(status_code=500, detail=f"Chat creation failed: {error_detail}")
+            raise HTTPException(status_code=500, detail="Chat creation failed")
 
 
 @router.get("/{chat_id}", response_model=ChatResponse)

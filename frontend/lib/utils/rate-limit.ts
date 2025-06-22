@@ -1,8 +1,16 @@
 import type { RateLimitOptions, RateLimitStore, RateLimitResult } from "@/lib/types"
 
-// Remove duplicate interfaces - now using centralized types
-
 const store: RateLimitStore = {}
+
+// Clean up expired entries periodically
+setInterval(() => {
+  const now = Date.now()
+  Object.keys(store).forEach(key => {
+    if (store[key] && now > store[key].resetTime) {
+      delete store[key]
+    }
+  })
+}, 60000) // Clean up every minute
 
 export const rateLimit = (options: RateLimitOptions) => {
   return (identifier: string): RateLimitResult => {

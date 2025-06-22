@@ -39,6 +39,10 @@ async def get_messages(
 ):
     """Get all messages for a specific chat"""
     try:
+        # Validate pagination parameters
+        limit = min(max(1, limit), 100)  # Clamp between 1-100
+        offset = max(0, offset)  # Ensure non-negative
+        
         # First verify user has access to this chat
         chat_response = user_supabase.table("chats").select("id").eq(
             "id", chat_id).eq("user_id", current_user.id).execute()
@@ -46,7 +50,7 @@ async def get_messages(
         if not chat_response.data:
             raise HTTPException(status_code=404, detail="Chat not found")
 
-        # Get messages
+        # Get messages with optimized query
         response = user_supabase.table("messages").select("*").eq("chat_id", chat_id).order(
             "created_at", desc=False).range(offset, offset + limit - 1).execute()
 
@@ -113,9 +117,7 @@ async def create_message(
             "content": ai_response_text,
             "created_at": datetime.utcnow().isoformat()
         }
-        response = user_supabase.table("messages").insert(ai_message_data).execute()
-
-        # 6. Update chat's updated_at timestamp
+        response = user_supabase.table("messages").insert(ai_message_data).execute()        # 6. Update chat's updated_at timestamp
         user_supabase.table("chats").update({
             "updated_at": datetime.utcnow().isoformat()
         }).eq("id", chat_id).execute()
@@ -126,9 +128,8 @@ async def create_message(
     except HTTPException:
         raise
     except Exception as e:
-        error_detail = str(e)
-        logger.error(f"Error creating message in chat {chat_id}: {error_detail}")
-        raise HTTPException(status_code=500, detail=f"Message creation failed: {error_detail}")
+        logger.error(f"Error creating message in chat {chat_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Message creation failed")
 
 
 @router.post("/chat/{chat_id}/stream")

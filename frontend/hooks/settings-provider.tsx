@@ -3,6 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { logger } from "@/lib/utils/logger"
+import { SecureStorage } from "@/lib/utils/local-storage"
 import type { Settings } from "@/lib/types/user"
 
 // Extend the centralized Settings interface with additional properties specific to this provider
@@ -14,6 +15,23 @@ interface ExtendedSettings extends Settings {
     openai?: string
     anthropic?: string
   }
+
+  // Developer settings
+  showDebugInfo: boolean
+  enableAdvancedFeatures: boolean
+  customCSS: string
+  apiEndpoint: string
+
+  // Collaboration
+  allowCollaboration: boolean
+  defaultPermissions: string
+  invitationMode: string
+
+  // Shortcuts and productivity
+  keyboardShortcuts: Record<string, any>
+  shortcuts: any[]
+  autoSave: boolean
+  autoSaveInterval: number
 
   // Connections and integrations
   googleDriveConnected: boolean
@@ -117,17 +135,39 @@ interface SettingsProviderProps {
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
   const [settings, setSettings] = useState<ExtendedSettings>(() => {
-    try {
-      const storedSettings = localStorage.getItem("settings")
-      return storedSettings ? { ...defaultSettings, ...JSON.parse(storedSettings) } : defaultSettings
-    } catch (error) {
-      logger.error("Error parsing stored settings", error as Error, { component: "settings-provider" })
-      return defaultSettings
+    const loadSettings = async () => {
+      try {
+        const storedSettings = await SecureStorage.getItem<ExtendedSettings>("settings")
+        return storedSettings ? { ...defaultSettings, ...storedSettings } : defaultSettings
+      } catch (error) {
+        logger.error("Error loading stored settings", error as Error, { component: "settings-provider" })
+        return defaultSettings
+      }
     }
+    // For now, return default settings and load async in useEffect
+    return defaultSettings
   })
 
+  // Load settings from secure storage on mount
   useEffect(() => {
-    localStorage.setItem("settings", JSON.stringify(settings))
+    const loadSettings = async () => {
+      try {
+        const storedSettings = await SecureStorage.getItem<ExtendedSettings>("settings")
+        if (storedSettings) {
+          setSettings(prev => ({ ...prev, ...storedSettings }))
+        }
+      } catch (error) {
+        logger.error("Error loading stored settings", error as Error, { component: "settings-provider" })
+      }
+    }
+    loadSettings()
+  }, [])
+
+  useEffect(() => {
+    SecureStorage.setItem("settings", settings, { 
+      encrypt: false, // Settings don't need encryption but could be enabled for sensitive data
+      expiryHours: 24 * 30 // 30 days
+    })
   }, [settings])
 
   const updateSetting = (key: keyof ExtendedSettings, value: any) => {
@@ -152,7 +192,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     URL.revokeObjectURL(url)
   }
 
-  const importSettings = (importedSettings: Partial<Settings>) => {
+  const importSettings = (importedSettings: Partial<ExtendedSettings>) => {
     setSettings((prevSettings) => ({
       ...prevSettings,
       ...importedSettings,

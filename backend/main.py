@@ -1,17 +1,10 @@
 from api import chats, messages
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 from config import settings
 from utils.logger import logger
-
-# import sys
-# from pathlib import Path
-
-# # Add the parent directory to the path so we can import our modules
-# sys.path.append(str(Path(__file__).parent))
-
-# Import routers
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -20,22 +13,33 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Security middleware - restrict hosts in production
+if not settings.DEBUG:
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=["localhost", "127.0.0.1", "*.herokuapp.com", "*.vercel.app"]
+    )
+
 # CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_URL, 
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
+allowed_origins = [
+    settings.FRONTEND_URL, 
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Only allow all origins in debug mode
+if settings.DEBUG:
+    allowed_origins.extend([
         "http://localhost:8080",
         "http://127.0.0.1:8080",
-        "https://your-frontend-domain.com",
-        "*"  # Allow all origins for development
-    ],
+    ])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
     max_age=3600,
 )
 

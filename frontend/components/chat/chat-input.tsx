@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
+import { sanitizeInput } from "@/lib/utils/security"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_FILE_TYPES = [
@@ -88,7 +89,8 @@ export function ChatInput() {
     if (!input.trim() && attachments.length === 0) return
     if (isStreaming) return
 
-    const messageContent = input.trim()
+    // Sanitize input to prevent XSS attacks
+    const messageContent = sanitizeInput(input.trim())
     const wasNewChat = !currentChat
 
     setInput("")

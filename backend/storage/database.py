@@ -27,6 +27,10 @@ security = HTTPBearer()
 def get_user_supabase_client(token: str) -> Client:
     """Create a Supabase client with user authentication token for RLS"""
     try:
+        # Validate token format
+        if not token or len(token) < 10:
+            raise ValueError("Invalid token format")
+            
         # Create options with proper headers
         options = ClientOptions(
             headers={
@@ -45,8 +49,10 @@ def get_user_supabase_client(token: str) -> Client:
         return user_client
     except Exception as e:
         logger.error(f"Failed to create authenticated Supabase client: {e}")
-        # Return a basic client if user client creation fails
-        return supabase
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed"
+        )
 
 # Dependency to get current user
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
@@ -57,6 +63,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
 
     token = credentials.credentials
+    
+    # Basic token format validation
+    if not token or len(token) < 10 or not token.replace('-', '').replace('_', '').replace('.', '').isalnum():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token format"
+        )
+    
     try:
         # Verify JWT token with Supabase
         response = supabase.auth.get_user(token)

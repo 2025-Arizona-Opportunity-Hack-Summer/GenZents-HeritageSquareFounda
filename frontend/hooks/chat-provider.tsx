@@ -4,6 +4,7 @@ import type React from "react"
 import { createContext, useContext, useReducer, useCallback, useEffect } from "react"
 import { nanoid } from "nanoid"
 import { logger } from "@/lib/utils/logger"
+import { SecureStorage } from "@/lib/utils/local-storage"
 import type { Message, Attachment, ChatSession } from "@/lib/types/chat"
 
 // Helper function to create a proper message
@@ -270,29 +271,35 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // Load sessions from localStorage on mount
   useEffect(() => {
-    const savedSessions = localStorage.getItem("chat-sessions")
-    if (savedSessions) {
+    const loadSessions = async () => {
       try {
-        const sessions = JSON.parse(savedSessions).map((s: any) => ({
-          ...s,
-          createdAt: new Date(s.createdAt),
-          updatedAt: new Date(s.updatedAt),
-          messages: s.messages.map((m: any) => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-          })),
-        }))
-        dispatch({ type: "LOAD_SESSIONS", payload: sessions })
+        const sessions = await SecureStorage.getItem<ChatSession[]>("chat-sessions")
+        if (sessions) {
+          const processedSessions = sessions.map((s: any) => ({
+            ...s,
+            createdAt: new Date(s.createdAt),
+            updatedAt: new Date(s.updatedAt),
+            messages: s.messages.map((m: any) => ({
+              ...m,
+              timestamp: new Date(m.timestamp),
+            })),
+          }))
+          dispatch({ type: "LOAD_SESSIONS", payload: processedSessions })
+        }
       } catch (error) {
         logger.error("Failed to load sessions", error as Error, { component: "chat-provider" })
       }
     }
+    loadSessions()
   }, [])
 
   // Save sessions to localStorage when they change
   useEffect(() => {
     if (state.sessions.length > 0) {
-      localStorage.setItem("chat-sessions", JSON.stringify(state.sessions))
+      SecureStorage.setItem("chat-sessions", state.sessions, { 
+        encrypt: true, 
+        expiryHours: 24 * 7 // 7 days
+      })
     }
   }, [state.sessions])
 
