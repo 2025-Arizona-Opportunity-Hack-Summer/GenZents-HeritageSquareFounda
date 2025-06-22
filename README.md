@@ -11,18 +11,19 @@
     @Irtifaur Rahman (on Slack)
 
     ## Team "GenZents"
-    - [Team Member 1](GitHub profile link)
-    - [Team Member 2](GitHub profile link)
-    - [Team Member 3](GitHub profile link)
-    <!-- Add all team members -->
+    - [Aakash Khepar](https://github.com/ak-asu)
+    - [Hartik Mukesh Suhagiya](GitHub profile link)
+    - [Manas Dani](GitHub profile link)
+    - [Vuong Nguyen](GitHub profile link)
+    - [Waleed Alfar](GitHub profile link)
 
     ## Project Overview
     Brief description of your project and its goals.
 
     ## Tech Stack
-    - Frontend: 
-    - Backend: 
-    - Database: 
+    - Frontend: React, Typescript
+    - Backend: Python
+    - Database: Chroma
     - APIs: 
     <!-- Add/modify as needed -->
 

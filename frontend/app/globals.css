@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.75rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* Custom variables */
+    --font-inter: "Inter", sans-serif;
+    --font-poppins: "Poppins", sans-serif;
+    --font-fira-code: "Fira Code", monospace;
+
+    /* Chat specific colors */
+    --chat-user-bg: 221.2 83.2% 53.3%;
+    --chat-user-fg: 210 40% 98%;
+    --chat-assistant-bg: 210 40% 96%;
+    --chat-assistant-fg: 222.2 84% 4.9%;
+    --chat-system-bg: 47 9% 85%;
+    --chat-system-fg: 222.2 84% 4.9%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+
+    /* Dark mode chat colors */
+    --chat-user-bg: 217.2 91.2% 59.8%;
+    --chat-user-fg: 222.2 84% 4.9%;
+    --chat-assistant-bg: 217.2 32.6% 17.5%;
+    --chat-assistant-fg: 210 40% 98%;
+    --chat-system-bg: 215 20.2% 25.1%;
+    --chat-system-fg: 210 40% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-muted/30;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Animation classes */
+  .animate-typing {
+    animation: typing 1.5s infinite;
+  }
+
+  @keyframes typing {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+    }
+    30% {
+      transform: translateY(-10px);
+    }
+  }
+
+  /* Message animations */
+  .message-enter {
+    animation: messageSlideIn 0.3s ease-out;
+  }
+
+  @keyframes messageSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Drag and drop styles */
+  .drag-over {
+    @apply border-primary border-2 border-dashed bg-primary/5;
+  }
+
+  .drag-active {
+    @apply border-primary border-2 border-dashed bg-primary/10;
+  }
+}
+
+/* Font family utilities */
+.font-heading {
+  font-family: var(--font-poppins);
+}
+
+.font-body {
+  font-family: var(--font-inter);
+}
+
+.font-mono {
+  font-family: var(--font-fira-code);
+}
+
+/* Markdown styles for AI messages */
+.prose-chat {
+  @apply prose prose-sm dark:prose-invert max-w-none;
+}
+
+.prose-chat pre {
+  @apply bg-muted/80 border rounded-md p-3 overflow-x-auto;
+}
+
+.prose-chat code {
+  @apply bg-muted/60 px-1.5 py-0.5 rounded text-sm;
+}
+
+.prose-chat pre code {
+  @apply bg-transparent p-0;
+}
+
+.prose-chat blockquote {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic;
+}
+
+.prose-chat table {
+  @apply border border-border rounded-md overflow-hidden;
+}
+
+.prose-chat th,
+.prose-chat td {
+  @apply border border-border px-3 py-2;
+}
+
+.prose-chat th {
+  @apply bg-muted font-medium;
+}
