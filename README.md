@@ -15,7 +15,7 @@
     - [Hartik Mukesh Suhagiya](GitHub profile link)
     - [Manas Dani](GitHub profile link)
     - [Vuong Nguyen](GitHub profile link)
-    - [Waleed Alfar](GitHub profile link)
+    - [Waleed Alfar](https://github.com/waleedalfar)
 
     ## Project Overview
     Brief description of your project and its goals.
