@@ -16,3 +16,6 @@ __pycache__
 !.env.example
 credentials.json
 token.json
+
+# Ignore the agent's .env file
+backend/scripts/.env
