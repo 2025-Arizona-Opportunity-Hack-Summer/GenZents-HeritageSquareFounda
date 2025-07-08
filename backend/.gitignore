@@ -11,7 +11,6 @@ __pycache__
 *.egg-info
 *.DS_Store
 
-
 # env files
 .env*
 !.env.example
