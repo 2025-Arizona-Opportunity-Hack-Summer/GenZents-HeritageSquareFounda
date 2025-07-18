@@ -223,7 +223,7 @@ Be helpful, safe, and provide clear explanations of what you're doing."""
     def _get_function_mapping(self) -> Dict[str, Callable]:
         """Map function names to actual drive service methods"""
         return {
-            "list_files": self.drive_service.list_files,
+            "list_files": self.drive_service.list_all_file_metadata,
             "get_file_info": self.drive_service.get_file_info,
             "create_folder": self.drive_service.create_folder,
             "move_file": self.drive_service.move_file,
@@ -267,6 +267,7 @@ Be helpful, safe, and provide clear explanations of what you're doing."""
         except Exception as e:
             logger.error(f"Error in process_regular_query: {str(e)}")
             raise ValueError(f"Query processing failed: {str(e)}")
+    
     async def process_message(self, message: str) -> str:
         """Process user message and execute any necessary function calls"""
         if not self.chat:
