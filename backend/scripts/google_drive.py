@@ -9,13 +9,12 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2 import service_account
 from config import settings
 from utils.logger import logger
+import fitz
 
 
 class GoogleDriveService:
     SCOPES = [
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/drive.file',
-        'https://www.googleapis.com/auth/drive.metadata'
+        'https://www.googleapis.com/auth/drive'
     ]
 
     def __init__(self, credentials_path: Optional[str] = None):
@@ -36,11 +35,7 @@ class GoogleDriveService:
 
             # Verify it's a service account credentials file
             if creds_info.get('type') != 'service_account':
-                raise ValueError(
-                    f"""Invalid credentials type. Expected 'service_account', got '{
-                        creds_info.get('type')}'. """
-                    "Please use a service account credentials file for backend applications."
-                )
+                raise ValueError(f"Invalid credentials type. Expected 'service_account', got '{creds_info.get('type')}'. ""Please use a service account credentials file for backend applications.")
 
             logger.info("Using service account authentication")
             credentials = service_account.Credentials.from_service_account_file(
@@ -69,31 +64,52 @@ class GoogleDriveService:
             logger.error(f"Failed to get file info for {file_id}: {e}")
             raise
 
-    def list_files(self, folder_id: Optional[str] = None, query: Optional[str] = None,
-                   max_results: int = 100, order_by: str = 'modifiedTime desc') -> List[Dict[str, Any]]:
-        """List files in a folder or matching a query"""
+    def get_file_info(self, file_id: str,
+                      fields: Optional[str] = None) -> Dict[str, Any]:
+        """Get detailed information about a file"""
         try:
-            q = []
-            if folder_id:
-                q.append(f"'{folder_id}' in parents")
-            if query:
-                q.append(query)
-            q.append("trashed=false")
+            default_fields = 'id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink,webContentLink,owners,permissions'
+            fields = fields or default_fields
 
-            query_string = " and ".join(q)
-
-            results = self.service.files().list(
-                q=query_string,
-                pageSize=max_results,
-                orderBy=order_by,
-                fields="nextPageToken, files(id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink)"
-            ).execute()
-
-            files = results.get('files', [])
-            return [self._format_file_info(file) for file in files]
+            file_info = self.service.files().get(fileId=file_id, fields=fields).execute()
+            return self._format_file_info(file_info)
         except HttpError as e:
-            logger.error(f"Failed to list files: {e}")
+            logger.error(f"Failed to get file info for {file_id}: {e}")
             raise
+
+    def list_all_file_metadata(self, folder_id:Optional[str]=None):
+        results = None
+        if not folder_id:
+            # if folder_id not provided, list all files and folders in the google drive
+            results = self.service.files().list(
+                pageSize=10,
+                fields="nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, owners)"
+            ).execute()
+            
+        else:
+            query = f"'{folder_id}' in parents and trashed=false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name, mimeType)"
+            ).execute()
+            files = results.get('files', [])
+            print("\nFiles in folder:")
+            for file in files:
+                print(f"- {file['name']} ({file['mimeType']})")
+        
+        items = results.get('files', [])
+        if not items:
+            print("No files found.")
+        else:
+            print("Files:")
+            for item in items:
+                print(f"{item['name']} ({item['id']})")
+                print(f"  Type: {item['mimeType']}")
+                print(f"  Created: {item['createdTime']}")
+                print(f"  Modified: {item['modifiedTime']}")
+                print(f"  Owner: {item['owners'][0]['emailAddress']}")
+                print()
+        return items
 
     def create_folder(
             self, name: str, parent_id: Optional[str] = None) -> Dict[str, Any]:
@@ -144,26 +160,63 @@ class GoogleDriveService:
             logger.error(f"Failed to upload file {filename}: {e}")
             raise
 
-    def download_file(self, file_id: str) -> bytes:
-        """Download file content"""
+    def download_and_get_file_content(self, file_id: str, file_mimeType: str) -> bytes:
+        """Download and get content of the file with file_id"""
         try:
-            request = self.service.files().get_media(fileId=file_id)
-            file_content = io.BytesIO()
-            downloader = MediaIoBaseDownload(file_content, request)
+            # process Google workspace files
+            export_mime_map = {
+            "application/vnd.google-apps.document": "text/plain",
+            "application/vnd.google-apps.spreadsheet": "text/csv",
+            "application/vnd.google-apps.presentation": "text/plain"
+        }
 
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
+            if file_mimeType.startswith("application/vnd.google-apps"):
+                export_mime = export_mime_map[file_mimeType]
+                if file_mimeType not in export_mime_map:
+                    logger.warning(f"Unsupported Google type: {export_mime}")
+                    return None
+                
+                request = self.service.files().export(fileId=file_id, mimeType=file_mimeType)
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
 
-            file_content.seek(0)
-            content = file_content.read()
-            logger.info(
-                f"Downloaded file (ID: {file_id}), size: {len(content)} bytes")
-            return content
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+
+                fh.seek(0)
+                content = fh.read().decode('utf-8')
+                logger.info(
+                    f"Downloaded file (ID: {file_id}), size: {len(content)} bytes")
+                return content
+            
+            # process other file types
+            else:
+                request = self.service.files().get_media(fileId=file_id)
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                fh.seek(0)
+                
+                if "pdf" in file_mimeType:
+                    doc = fitz.open(stream=fh, filetype="pdf")
+                    text = ""
+                    for page in doc:
+                        text += page.get_text()
+                    print(text)
+                    return text
+                if "csv" in file_mimeType:
+                    csv_text = fh.read().decode('utf-8', errors='ignore')
+                    return csv_text
+                if "text" in file_mimeType:
+                    text = fh.read().decode('utf-8')
+                    return text                    
+                
         except HttpError as e:
             logger.error(f"Failed to download file {file_id}: {e}")
             raise
-
     def delete_file(self, file_id: str) -> bool:
         """Delete a file (move to trash)"""
         try:
