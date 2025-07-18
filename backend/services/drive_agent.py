@@ -241,6 +241,32 @@ Be helpful, safe, and provide clear explanations of what you're doing."""
         logger.info(
             f"""Started new Google Drive agent chat session for user {self.user_id}""")
 
+    def handle_regular_query(self, query:str):
+        try:
+            logger.info(f"Processing query for user {self.user_id}")
+
+            from services.rag import RAG
+            my_rag = RAG(self.drive)
+            context = my_rag.retrieve(query)
+            # message = my_rag.generate_message(context=context,query=query)
+            # print(message)
+            
+            prompt = f"""Question: {query}
+
+                Retrieved Context:
+                {context}
+
+                Please provide a clear, relevant answer based on the above context."""
+
+            if not self.chat:
+                self.start_chat()
+
+            response = self.chat.send_message(prompt)
+            return response.text if response.text else "No relevant information found."
+
+        except Exception as e:
+            logger.error(f"Error in process_regular_query: {str(e)}")
+            raise ValueError(f"Query processing failed: {str(e)}")
     async def process_message(self, message: str) -> str:
         """Process user message and execute any necessary function calls"""
         if not self.chat:
@@ -308,6 +334,7 @@ Be helpful, safe, and provide clear explanations of what you're doing."""
             logger.error(
                 f"""Error checking permissions for user {self.user_id}: {e}""")
             return False
+    
 
     async def _track_change(self, change_type: str, resource_path: str,
                             old_path: str = None, new_path: str = None,
