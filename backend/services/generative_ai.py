@@ -221,7 +221,7 @@ Be helpful and explain what you're doing when using drive tools.
                         f"""[CONTEXT] Assistant previously responded: {msg.get('content')}""")
 
         # Process the current message
-        response = await drive_agent.process_message(prompt)
+        response = await drive_agent.handle_regular_query(prompt)
 
         return response
 
